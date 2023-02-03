@@ -1,4 +1,3 @@
-:52 (qiita@b2-001):AmpliconDevelopment$ cat p.py
 import sys
 import os
 import re
