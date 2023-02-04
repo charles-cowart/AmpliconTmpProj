@@ -72,14 +72,17 @@ def process_run_info_file(run_info_fp):
         # the contents of each Read element are highly regular.
         # for now, process w/out installing xml2dict or other
         # library into Qiita env.
-        results = re.findall('<Read (.+?) />', reads)
+        reads = reads.split('<Read ')
+        reads = [x.strip() for x in reads]
+        reads = [x for x in reads if x != '']
 
-        results = []
-        for result in results:
-            attributes = result.split(' ')
+        l = []
+        for read in reads:
             d = {}
-            for attribute in attributes:
-                k, v = attribute.split('=')
+            read = read.strip('<').strip('>').strip('/')
+            pairs = read.split(' ')
+            for pair in pairs:
+                k, v = pair.split('=')
                 if k in ['NumCycles', 'Number']:
                     v = int(v.strip('"'))
                 elif k in ['IsIndexedRead']:
@@ -87,19 +90,23 @@ def process_run_info_file(run_info_fp):
                     v = False if v == 'N' else True
                 else:
                     raise ValueError("Unknown key: %s" % k)
-                d[k] = v
-            results.append(d)
 
-        return results
+                d[k] = v
+            l.append(d)
+
+        print(l)
+        return l
 
     with open(run_info_fp, 'r') as f:
         s = f.read()
-        reads = re.search('<Reads>(.+?)</Reads>', s.replace('\n', ''))
+        s = s.replace('\n', '')
+        reads = re.search('<Reads>(.+?)</Reads>', s)
         if reads:
             result = reads.group(1)
         else:
             raise ValueError("Cannot extract read information")
-        return process_reads(result)
+        result = process_reads(result)
+        return result
 
 
 def get_runinfo_params(run_id):
@@ -122,7 +129,7 @@ def get_runinfo_params(run_id):
     return index1, index2
 
 
-def process_run_dir(run_id, output_path):
+def process_run_dir(run_id, output_dir):
     index1, index2 = get_runinfo_params(run_id)
 
     # these will need to be pulled from runinfo.xml as well.
@@ -133,26 +140,34 @@ def process_run_dir(run_id, output_path):
     sheet = generate_amplicon_sample_sheet(read1, read2, override_cycles,
                                            index1, index2, contacts)
 
-    result_path = os.path.join(output_path, run_id, '.csv')
+    result_path = os.path.join(output_dir, run_id + '.csv')
 
     with open(result_path, 'w') as f:
         sheet.write(f, 1)
+
+    return result_path
 
 
 def main():
     results = 0
     for run_dir in os.listdir(miseq_root):
+        if run_dir in ['.DS_Store', '170425_M05314_0006_000000000-AEARP', '170915_M05314_0028_000000000-BDMKR']:
+            # 170ddd directories don't have a runinfo.xml file.
+            continue
+
         try:
             print("processing %s" % run_dir)
-            sample_sheet_fp = process_run_dir(run_dir, sys.argv[1])
+            sample_sheet_fp = process_run_dir(run_dir, './test_output_files')
             print("Created %s" % sample_sheet_fp)
-        except ValueError as e:
+        except (FileNotFoundError, ValueError) as e:
             print("Couldn't process %s: %s" % (run_dir, e))
             results = 1
+
 
     return results
 
 
 if __name__ == '__main__':
     # main will return a proper return code
-    sys.exit(main())
+    # sys.exit(main())
+    process_run_dir('180404_A00169_0085_AH7CV2DMXX', '.')
