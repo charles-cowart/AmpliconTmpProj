@@ -9,7 +9,7 @@ from metapool import KLSampleSheet
 miseq_root = '/sequencing/seqmount/KL_MiSeq_Runs'
 
 
-def generate_amplicon_sample_sheet(read1, read2, override_cycles, index1,
+def generate_amplicon_sample_sheet(reads, override_cycles, index1,
                                    index2, contacts):
     # create object and initialize header
     sheet = KLSampleSheet()
@@ -23,7 +23,7 @@ def generate_amplicon_sample_sheet(read1, read2, override_cycles, index1,
 
     # set Reads and Settings according to input values
     # we'll get this from the code on the server
-    sheet.Reads = [read1, read2]
+    sheet.Reads = reads
     sheet.Settings['OverrideCycles'] = override_cycles
 
     sheet.Settings['MaskShortReads'] = '1'
@@ -81,6 +81,7 @@ def process_run_info_file(run_info_fp):
             d = {}
             read = read.strip('<').strip('>').strip('/')
             pairs = read.split(' ')
+            pairs = [x for x in pairs if x != '']
             for pair in pairs:
                 k, v = pair.split('=')
                 if k in ['NumCycles', 'Number']:
@@ -94,7 +95,6 @@ def process_run_info_file(run_info_fp):
                 d[k] = v
             l.append(d)
 
-        print(l)
         return l
 
     with open(run_info_fp, 'r') as f:
@@ -112,7 +112,14 @@ def process_run_info_file(run_info_fp):
 def get_runinfo_params(run_id):
     fp = os.path.join(miseq_root, run_id)
     if os.path.exists(fp):
+        print(os.path.join(fp, 'RunInfo.xml'))
         reads = process_run_info_file(os.path.join(fp, 'RunInfo.xml'))
+
+        reads_list = [x['NumCycles'] for x in reads if x['IsIndexedRead'] is False]
+
+        if len(reads_list) != 2:
+            raise ValueError("RunInfo.xml contains an unexpected number of Non-indexed Reads (%d)" % len(reads_list))
+
         results = [x for x in reads if x['IsIndexedRead'] is True]
 
         if len(results) == 1:
@@ -121,23 +128,26 @@ def get_runinfo_params(run_id):
         elif len(results) == 2:
             index1 = 'A' * results[0]['NumCycles']
             index2 = 'G' * results[1]['NumCycles']
+        elif len(results) == 0:
+            raise ValueError("RunInfo.xml does not contain indexed reads")
         else:
             raise ValueError("too many indexed reads: %d" % len(results))
     else:
         raise ValueError("run_dir %s not found." % fp)
 
-    return index1, index2
+    return index1, index2, reads_list
 
 
 def process_run_dir(run_id, output_dir):
-    index1, index2 = get_runinfo_params(run_id)
+    index1, index2, reads = get_runinfo_params(run_id)
 
-    # these will need to be pulled from runinfo.xml as well.
-    read1 = 151
-    read2 = 151
-    override_cycles = 'Y151;I12;Y151'
+    if index2:
+        override_cycles = f'Y{reads[0]};I{len(index1)};I{len(index2)};Y{reads[1]}'
+    else:
+        override_cycles = f'Y{reads[0]};I{len(index1)};Y{reads[1]}'
+
     contacts = [['test@lol.com', 'Baz'], ['tester@rofl.com', 'FooBar_666']]
-    sheet = generate_amplicon_sample_sheet(read1, read2, override_cycles,
+    sheet = generate_amplicon_sample_sheet(reads, override_cycles,
                                            index1, index2, contacts)
 
     result_path = os.path.join(output_dir, run_id + '.csv')
@@ -160,7 +170,8 @@ def main():
             sample_sheet_fp = process_run_dir(run_dir, './test_output_files')
             print("Created %s" % sample_sheet_fp)
         except (FileNotFoundError, ValueError) as e:
-            print("Couldn't process %s: %s" % (run_dir, e))
+            # can also be because of a single non-indexed read when two are expected.
+            print("Couldn't process %s: %s (or permissions not set)" % (run_dir, e))
             results = 1
 
 
@@ -169,5 +180,6 @@ def main():
 
 if __name__ == '__main__':
     # main will return a proper return code
-    # sys.exit(main())
-    process_run_dir('180404_A00169_0085_AH7CV2DMXX', '.')
+    sys.exit(main())
+
+
