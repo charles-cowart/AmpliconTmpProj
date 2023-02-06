@@ -25,8 +25,8 @@ def generate_amplicon_sample_sheet(reads, override_cycles, index1,
     # we'll get this from the code on the server
     sheet.Reads = reads
     sheet.Settings['OverrideCycles'] = override_cycles
-
     sheet.Settings['MaskShortReads'] = '1'
+    sheet.Settings['CreateFastqForIndexReads'] = '1'
 
     if index1 is None:
         index1 = ''
@@ -34,16 +34,14 @@ def generate_amplicon_sample_sheet(reads, override_cycles, index1,
     if index2 is None:
         index2 = ''
 
+    # the seven minimum fields that appear to be needed.
     dummy_samples = {'Sample_ID': 'Bacterial_Test_Study_Plates1_2',
-                     'Sample_Name': '',
                      'Sample_Plate': '',
                      'Sample_Well': '',
                      'I7_Index_ID': '',
-                     'index': index1,
+                     'index': '',
                      'I5_Index_ID': '',
-                     'index2': index2,
-                     'Sample_Project': 'Bacterial_Test_Study_Plates1_2',
-                     'Description': ''
+                     'index2': ''
                      }
     sheet.add_sample(sample_sheet.Sample(dummy_samples))
 
@@ -52,16 +50,15 @@ def generate_amplicon_sample_sheet(reads, override_cycles, index1,
                             data=contacts)
     sheet.Contact = contacts
 
-    # add a dummy sample.
-    samples = [['Bacterial_Test_Study_Plates1_2', 'NA', 'NA',
-                'FALSE', 'FALSE', '14782']]
+    # add a dummy Bioinformatics section.
+    bi = [['Bacterial_Test_Study_Plates1_2', 'NA', 'NA', 'FALSE', 'FALSE',
+           '14782']]
 
-    samples = pd.DataFrame(columns=['Project', 'ForwardAdapter',
-                                    'ReverseAdapter', 'PolyGTrimming',
-                                    'HumanFiltering', 'QiitaID'],
-                           data=samples)
+    bi = pd.DataFrame(columns=['Project', 'ForwardAdapter', 'ReverseAdapter',
+                               'PolyGTrimming', 'HumanFiltering', 'QiitaID'],
+                      data=bi)
 
-    sheet.Bioinformatics = samples
+    sheet.Bioinformatics = bi
 
     return sheet
 
@@ -142,9 +139,9 @@ def process_run_dir(run_id, output_dir):
     index1, index2, reads = get_runinfo_params(run_id)
 
     if index2:
-        override_cycles = f'Y{reads[0]};I{len(index1)};I{len(index2)};Y{reads[1]}'
+        override_cycles = f'Y{reads[0]};N{len(index1)};N{len(index2)};Y{reads[1]}'
     else:
-        override_cycles = f'Y{reads[0]};I{len(index1)};Y{reads[1]}'
+        override_cycles = f'Y{reads[0]};N{len(index1)};Y{reads[1]}'
 
     contacts = [['test@lol.com', 'Baz'], ['tester@rofl.com', 'FooBar_666']]
     sheet = generate_amplicon_sample_sheet(reads, override_cycles,
